@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Phone-to-FM Wireless Speaker — Signal Path</title>
+<style>
+  :root {
+    --bg: #0B1013; --bg-2: #10171C; --panel: #141C22; --panel-line: #253038;
+    --ink: #E7EEF1; --ink-dim: #8FA0AA; --ink-faint: #566670;
+    --tx: #FFB238; --rx: #4FD8EB;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #F1EEE6; --bg-2: #E9E4D8; --panel: #FBF9F3; --panel-line: #D8D1BF;
+      --ink: #1B1E17; --ink-dim: #5A5A4E; --ink-faint: #8A8878;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0B1013; --bg-2: #10171C; --panel: #141C22; --panel-line: #253038;
+    --ink: #E7EEF1; --ink-dim: #8FA0AA; --ink-faint: #566670;
+  }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(120% 140% at 20% -10%, var(--bg-2), var(--bg) 60%);
+    color: var(--ink);
+    font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+  }
+  .mono { font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 48px 24px 80px; }
+
+  header.top { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid var(--panel-line); padding-bottom: 18px; margin-bottom: 36px; flex-wrap: wrap; gap: 10px; }
+  header.top .tag { color: var(--ink-faint); font-size: 12.5px; letter-spacing: 0.02em; }
+  header.top .tag .dot { color: var(--tx); }
+
+  h1 { font-family: "Space Grotesk", "Inter", sans-serif; font-weight: 600; font-size: clamp(28px, 4.4vw, 42px); line-height: 1.12; margin: 0 0 14px; max-width: 16ch; }
+  .lede { color: var(--ink-dim); max-width: 58ch; font-size: 16px; margin: 0 0 6px; }
+  .lede b { color: var(--ink); font-weight: 600; }
+
+  .diagram-panel { background: var(--panel); border: 1px solid var(--panel-line); border-radius: 6px; padding: 6px; margin: 40px 0 18px; }
+  .diagram-panel .inner { border: 1px solid var(--panel-line); border-radius: 4px; padding: 20px 16px 8px; }
+  svg { display: block; width: 100%; height: auto; overflow: visible; }
+
+  .lbl { font-family: "IBM Plex Mono", monospace; font-size: 11px; fill: var(--ink-dim); }
+  .lbl-strong { font-family: "Space Grotesk", sans-serif; font-size: 13px; fill: var(--ink); font-weight: 600; }
+  .faint-line { stroke: var(--panel-line); stroke-width: 1; }
+
+  .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--panel-line); border: 1px solid var(--panel-line); border-radius: 6px; overflow: hidden; margin-bottom: 22px; }
+  .ctrl { background: var(--panel); padding: 18px 20px 20px; }
+  .ctrl .head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+  .ctrl .head .who { font-family: "Space Grotesk", sans-serif; font-size: 13px; color: var(--ink-dim); }
+  .ctrl .head .freq { font-family: "IBM Plex Mono", monospace; font-size: 22px; font-variant-numeric: tabular-nums; transition: color .15s; }
+  input[type="range"] { -webkit-appearance: none; appearance: none; width: 100%; height: 3px; border-radius: 2px; background: var(--panel-line); outline: none; cursor: pointer; }
+  input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--bg); }
+  input[type="range"]::-moz-range-thumb { width: 13px; height: 13px; border-radius: 50%; border: none; }
+
+  .stepper { display: flex; align-items: center; gap: 12px; }
+  .stepper input[type="range"] { flex: 1; }
+  .step-btn {
+    flex: 0 0 auto; width: 36px; height: 36px; border-radius: 6px;
+    border: 1px solid var(--panel-line); background: var(--bg); color: var(--ink);
+    font-family: "IBM Plex Mono", monospace; font-size: 20px; line-height: 1;
+    cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: manipulation;
+    transition: border-color .15s, background .15s;
+  }
+  .step-btn:hover { border-color: var(--ink-dim); }
+  .step-btn:active { background: var(--panel-line); }
+  .step-btn:focus-visible { outline: 2px solid var(--ink-dim); outline-offset: 2px; }
+  .range-ends { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--ink-faint); margin-top: 6px; font-family: "IBM Plex Mono", monospace; }
+
+  /* ---- live scope comparison ---- */
+  .scope-panel { background: var(--panel); border: 1px solid var(--panel-line); border-radius: 6px; padding: 18px 20px 20px; margin-bottom: 8px; }
+  .scope-panel .top-row { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+  .scope-panel .title { font-family: "Space Grotesk", sans-serif; font-size: 13px; color: var(--ink-dim); }
+  .scope-panel .status { font-family: "IBM Plex Mono", monospace; font-size: 12.5px; }
+  .scope { margin-top: 14px; }
+  .scope .scope-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  .scope .scope-head .who { font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--ink-faint); letter-spacing: 0.03em; }
+  .scope .scope-head .badge { display: flex; align-items: center; gap: 6px; font-family: "IBM Plex Mono", monospace; font-size: 11px; }
+  .scope .scope-head .swatch { width: 8px; height: 8px; border-radius: 50%; }
+  .scope-box { border: 1px solid var(--panel-line); border-radius: 4px; background: var(--bg); overflow: hidden; }
+  .scope-box svg { width: 100%; height: 64px; display: block; }
+  .scope-grid { stroke: var(--panel-line); stroke-width: 1; }
+
+  h2 { font-family: "Space Grotesk", sans-serif; font-size: 13px; letter-spacing: 0.06em; color: var(--ink-faint); font-weight: 600; margin: 0 0 4px; }
+  h2 .n { color: var(--tx); }
+  .section-title { display: flex; align-items: baseline; gap: 10px; margin: 56px 0 4px; }
+  .section-title h2 { margin: 0; }
+  .section-title .rule { flex: 1; height: 1px; background: var(--panel-line); }
+  .section-sub { color: var(--ink-dim); font-size: 14.5px; margin: 0 0 22px; max-width: 60ch; }
+
+  .stage { border-top: 1px solid var(--panel-line); padding: 20px 0; display: grid; grid-template-columns: 160px 1fr; gap: 18px; }
+  .stage:last-child { border-bottom: 1px solid var(--panel-line); }
+  .stage .side { font-family: "IBM Plex Mono", monospace; font-size: 11.5px; color: var(--ink-faint); padding-top: 2px; }
+  .stage .side .idx { color: var(--tx); }
+  .stage h3 { font-family: "Space Grotesk", sans-serif; font-weight: 600; font-size: 16px; margin: 0 0 6px; color: var(--ink); }
+  .stage p { margin: 0 0 10px; color: var(--ink-dim); font-size: 14.5px; max-width: 62ch; }
+  .parts { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 8px; }
+  .part { font-family: "IBM Plex Mono", monospace; font-size: 11.5px; border: 1px solid var(--panel-line); border-radius: 3px; padding: 3px 8px; color: var(--ink-dim); }
+
+  @media (max-width: 620px) {
+    .stage { grid-template-columns: 1fr; gap: 4px; }
+    .controls { grid-template-columns: 1fr; }
+  }
+
+  footer { margin-top: 60px; padding-top: 18px; border-top: 1px solid var(--panel-line); color: var(--ink-faint); font-size: 12.5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="tag">SIGNAL-CHAIN BRIEF <span class="dot">·</span> RF / AUDIO</div>
+    <div class="tag mono">88–108 MHz BAND</div>
+  </header>
+
+  <h1>Turn any FM radio into a wireless speaker for your phone</h1>
+  <p class="lede">Tune the two dials below. When they land on the same frequency, the receiver's
+  scope doesn't just turn the same colour — it <b>redraws the transmitter's exact waveform, sample
+  for sample, and the speaker only radiates sound then, in that same colour.</b> Off-frequency, the
+  scope shows independent static and the speaker stays silent.</p>
+
+  <div class="diagram-panel">
+    <div class="inner">
+      <svg id="diagram" viewBox="0 0 960 300" xmlns="http://www.w3.org/2000/svg">
+
+        <g id="phone">
+          <rect x="14" y="112" width="46" height="80" rx="7" fill="none" stroke="var(--ink-dim)" stroke-width="1.6"/>
+          <circle cx="37" cy="180" r="2.4" fill="var(--ink-dim)"/>
+          <polyline id="phoneWave" points="" fill="none" stroke="var(--tx)" stroke-width="1.6"/>
+          <text x="37" y="206" text-anchor="middle" class="lbl">PHONE</text>
+        </g>
+
+        <path d="M 60 148 h 44" class="faint-line"/>
+
+        <g id="txBox">
+          <rect x="108" y="96" width="150" height="112" rx="3" fill="none" stroke="var(--panel-line)" stroke-width="1.2"/>
+          <text x="183" y="88" text-anchor="middle" class="lbl-strong">FM TRANSMITTER</text>
+          <path d="M137 150 q6 -14 12 0 q6 -14 12 0 q6 -14 12 0" fill="none" stroke="var(--ink-dim)" stroke-width="1.4"/>
+          <text x="163" y="176" text-anchor="middle" class="lbl">LC OSC</text>
+          <circle id="txDot" cx="220" cy="150" r="13" fill="none" stroke="var(--tx)" stroke-width="1.6"/>
+          <text x="220" y="176" text-anchor="middle" class="lbl">RF AMP</text>
+        </g>
+
+        <line x1="258" y1="150" x2="258" y2="92" stroke="var(--ink-dim)" stroke-width="1.6"/>
+        <line x1="258" y1="92" x2="272" y2="78" stroke="var(--ink-dim)" stroke-width="1.6"/>
+
+        <g id="rfWaves" fill="none" stroke-width="1.8">
+          <path d="M 280 86 q 14 20 0 40" opacity="0"/>
+          <path d="M 300 78 q 24 34 0 68" opacity="0"/>
+          <path d="M 320 70 q 34 48 0 96" opacity="0"/>
+        </g>
+
+        <text id="txFreqLabel" x="300" y="230" text-anchor="middle" class="mono" font-size="12" fill="var(--tx)">95.5 MHz</text>
+
+        <line x1="480" y1="40" x2="480" y2="240" stroke="var(--panel-line)" stroke-width="1" stroke-dasharray="3 5"/>
+        <text x="480" y="258" text-anchor="middle" class="lbl">OPEN AIR</text>
+
+        <line x1="660" y1="92" x2="660" y2="150" stroke="var(--ink-dim)" stroke-width="1.6"/>
+        <line x1="660" y1="92" x2="646" y2="78" stroke="var(--ink-dim)" stroke-width="1.6"/>
+
+        <text id="rxFreqLabel" x="640" y="230" text-anchor="middle" class="mono" font-size="12" fill="var(--rx)">101.2 MHz</text>
+
+        <g id="rxBox">
+          <rect x="602" y="96" width="150" height="112" rx="3" fill="none" stroke="var(--panel-line)" stroke-width="1.2"/>
+          <text x="677" y="88" text-anchor="middle" class="lbl-strong">FM RECEIVER</text>
+          <circle id="rxDial" cx="638" cy="152" r="15" fill="none" stroke="var(--rx)" stroke-width="1.6"/>
+          <line id="dialNeedle" x1="638" y1="152" x2="638" y2="140" stroke="var(--rx)" stroke-width="1.8"/>
+          <text x="638" y="180" text-anchor="middle" class="lbl">TUNER</text>
+          <rect x="668" y="142" width="24" height="20" rx="2" fill="none" stroke="var(--ink-dim)" stroke-width="1.4"/>
+          <text x="680" y="176" text-anchor="middle" class="lbl">DEMOD</text>
+        </g>
+
+        <path d="M 752 148 h 40" class="faint-line"/>
+
+        <g id="speaker">
+          <path d="M808 132 h16 l20 -16 v68 l-20 -16 h-16 z" fill="none" stroke="var(--ink-dim)" stroke-width="1.6"/>
+          <polyline id="speakerWave" points="" fill="none" stroke="var(--rx)" stroke-width="1.6"/>
+          <g id="soundWaves" fill="none" stroke-width="1.6">
+            <path d="M852 148 q7 -12 0 -24" opacity="0"/>
+            <path d="M861 148 q13 -22 0 -44" opacity="0"/>
+            <path d="M870 148 q19 -32 0 -64" opacity="0"/>
+          </g>
+          <text x="848" y="206" text-anchor="middle" class="lbl">SPEAKER (theirs)</text>
+        </g>
+
+      </svg>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="ctrl">
+      <div class="head"><span class="who">TRANSMITTER · from phone</span><span class="freq mono" id="txReadout">95.5</span></div>
+      <div class="stepper">
+        <button type="button" class="step-btn" data-target="txSlider" data-dir="-1" aria-label="Decrease frequency by 0.1 MHz">−</button>
+        <input type="range" id="txSlider" min="88" max="108" step="0.1" value="95.5">
+        <button type="button" class="step-btn" data-target="txSlider" data-dir="1" aria-label="Increase frequency by 0.1 MHz">+</button>
+      </div>
+      <div class="range-ends"><span>88.0</span><span>108.0</span></div>
+    </div>
+    <div class="ctrl">
+      <div class="head"><span class="who">RECEIVER · any FM radio</span><span class="freq mono" id="rxReadout">101.2</span></div>
+      <div class="stepper">
+        <button type="button" class="step-btn" data-target="rxSlider" data-dir="-1" aria-label="Decrease frequency by 0.1 MHz">−</button>
+        <input type="range" id="rxSlider" min="88" max="108" step="0.1" value="101.2">
+        <button type="button" class="step-btn" data-target="rxSlider" data-dir="1" aria-label="Increase frequency by 0.1 MHz">+</button>
+      </div>
+      <div class="range-ends"><span>88.0</span><span>108.0</span></div>
+    </div>
+  </div>
+
+  <div class="scope-panel">
+    <div class="top-row">
+      <span class="title">LIVE WAVEFORM — what each end is actually carrying</span>
+      <span class="status" id="statusNote">off-frequency — receiver is not reproducing the phone's audio</span>
+    </div>
+
+    <div class="scope">
+      <div class="scope-head">
+        <span class="who">TX OUTPUT · leaves the phone at <span id="txFreqTag">95.5 MHz</span></span>
+        <span class="badge"><span class="swatch" id="swatchTx"></span><span id="txBadge">95.5 MHz</span></span>
+      </div>
+      <div class="scope-box"><svg viewBox="0 0 960 64" preserveAspectRatio="none">
+        <line x1="0" y1="32" x2="960" y2="32" class="scope-grid"/>
+        <polyline id="txScope" points="" fill="none" stroke="var(--tx)" stroke-width="1.8"/>
+      </svg></div>
+    </div>
+
+    <div class="scope">
+      <div class="scope-head">
+        <span class="who">RX OUTPUT · arrives at the speaker at <span id="rxFreqTag">101.2 MHz</span></span>
+        <span class="badge"><span class="swatch" id="swatchRx"></span><span id="rxBadge">101.2 MHz</span></span>
+      </div>
+      <div class="scope-box"><svg viewBox="0 0 960 64" preserveAspectRatio="none">
+        <line x1="0" y1="32" x2="960" y2="32" class="scope-grid"/>
+        <polyline id="rxScope" points="" fill="none" stroke="var(--rx)" stroke-width="1.8"/>
+      </svg></div>
+    </div>
+  </div>
+
+  <div class="section-title"><h2><span class="n">01</span> — SIGNAL PATH</h2><div class="rule"></div></div>
+  <p class="section-sub">Six stages carry the sound from the phone's audio circuitry to the receiver's cone.
+  Nothing here is proprietary — every part is a standard, low-cost analog component.</p>
+
+  <div class="stage">
+    <div class="side"><span class="idx">1</span> / AUDIO SOURCE</div>
+    <div>
+      <h3>Phone headphone output</h3>
+      <p>The 3.5&nbsp;mm jack (or a USB-C DAC dongle) outputs a line-level audio signal, roughly
+      0.1–1&nbsp;V peak-to-peak. This becomes the baseband waveform that gets carried on the radio
+      frequency — it never touches the antenna directly. This is the trace drawn in the TX scope
+      above.</p>
+      <div class="parts"><span class="part">3.5mm TRS cable</span><span class="part">line-out ~ -10 dBV</span></div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="side"><span class="idx">2</span> / MODULATOR</div>
+    <div>
+      <h3>FM transmitter circuit</h3>
+      <p>A coupling capacitor blocks DC and feeds the audio into a varactor diode sitting inside an
+      LC tank circuit. Audio voltage bends the varactor's capacitance, which shifts the tank's
+      resonant frequency in step with the sound — that shifting <i>is</i> the FM modulation. A
+      transistor stage (Colpitts/Hartley oscillator, or a single-chip driver like the BH1417) keeps
+      the oscillation running at whatever centre frequency the trimmer capacitor sets, and boosts it
+      for radiation.</p>
+      <div class="parts"><span class="part">coupling cap 0.1µF</span><span class="part">varactor diode</span>
+      <span class="part">LC tank coil</span><span class="part">trimmer cap (sets TX freq)</span>
+      <span class="part">RF transistor (2N3904 / BF494)</span></div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="side"><span class="idx">3</span> / RADIATOR</div>
+    <div>
+      <h3>Transmit antenna</h3>
+      <p>A short wire — ideally a quarter-wavelength, about 75&nbsp;cm for this band, though hobby
+      builds often trim it shorter — turns the oscillating current into a radiated electromagnetic
+      wave at the transmitter's set frequency. Antenna length and power stage together set the usable
+      range, typically a few metres to a few tens of metres at legal unlicensed power.</p>
+      <div class="parts"><span class="part">~75 cm wire</span><span class="part">9V or 5V supply</span></div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="side"><span class="idx">4</span> / CHANNEL</div>
+    <div>
+      <h3>Open-air propagation</h3>
+      <p>The carrier travels through free space at whatever frequency the transmitter is set to.
+      It arrives at every FM radio within range, but only means something to a receiver whose tuner
+      is set to that same number — every other receiver just sees it as noise on some other channel.</p>
+      <div class="parts"><span class="part">88–108 MHz carrier</span><span class="part">free-space path loss</span></div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="side"><span class="idx">5</span> / RECEIVER</div>
+    <div>
+      <h3>Any standard FM radio</h3>
+      <p>This is the part you don't have to build — it's already in every FM radio, car stereo, or
+      radio-enabled phone. Its antenna picks up whatever carriers are in range, and its tuner/local-
+      oscillator stage is turned by hand (or by app) until it lands on the transmitter's exact
+      frequency. Only then does the demodulator (discriminator or PLL) reverse the modulation and
+      hand back the original waveform sample-for-sample — a few tenths of a megahertz off, and it
+      recovers nothing but its own noise floor, as the RX scope shows.</p>
+      <div class="parts"><span class="part">tuner + local osc.</span><span class="part">FM demodulator</span>
+      <span class="part">de-emphasis filter</span></div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="side"><span class="idx">6</span> / OUTPUT</div>
+    <div>
+      <h3>Built-in audio amplifier + speaker</h3>
+      <p>The recovered audio passes through the radio's own amplifier IC and out through its own
+      cone. When the two dials above agree, the trace coming out here is not just similarly shaped —
+      it is the transmitter's waveform, redrawn. From the listener's perspective, the FM radio has
+      just become a wireless speaker for the phone.</p>
+      <div class="parts"><span class="part">audio amp IC</span><span class="part">speaker cone</span></div>
+    </div>
+  </div>
+
+  <div class="section-title"><h2><span class="n">02</span> — DESIGN NOTES</h2><div class="rule"></div></div>
+  <div class="stage" style="grid-template-columns: 160px 1fr;">
+    <div class="side">WHY THE TRACES MATCH</div>
+    <div><p>A radio only demodulates the carrier its tuner is currently sitting on. Once both ends
+    agree on a frequency, the receiver isn't approximating the transmitted sound — it's physically
+    recovering the same modulation, so the waveform it hands to the speaker is, sample for sample,
+    the one that left the phone.</p></div>
+  </div>
+  <div class="stage">
+    <div class="side">RANGE &amp; POWER</div>
+    <div><p>Keep transmit power low (well under 100&nbsp;mW at the antenna) — most regions restrict
+    unlicensed FM transmission to a short range by law, which is what keeps a school/DIY build legal
+    without a broadcast licence.</p></div>
+  </div>
+  <div class="stage">
+    <div class="side">FREQUENCY CHOICE</div>
+    <div><p>Pick a gap in the local FM dial (a frequency with no strong nearby station) for the
+    trimmer capacitor to sit on, so the receiver locks onto your signal cleanly instead of fighting
+    a broadcaster.</p></div>
+  </div>
+  <div class="stage">
+    <div class="side">STEREO OPTION</div>
+    <div><p>Swapping the single-transistor oscillator for a stereo encoder IC (e.g. BH1417) adds a
+    19&nbsp;kHz pilot tone so receivers unlock stereo separation, at the cost of a slightly more
+    complex build.</p></div>
+  </div>
+
+  <footer>Signal-chain reference · phone → FM transmitter → open air → FM receiver → speaker</footer>
+</div>
+
+<script>
+(function(){
+  const txSlider = document.getElementById('txSlider');
+  const rxSlider = document.getElementById('rxSlider');
+  const txReadout = document.getElementById('txReadout');
+  const rxReadout = document.getElementById('rxReadout');
+  const txFreqLabel = document.getElementById('txFreqLabel');
+  const rxFreqLabel = document.getElementById('rxFreqLabel');
+  const txFreqTag = document.getElementById('txFreqTag');
+  const rxFreqTag = document.getElementById('rxFreqTag');
+  const txBadge = document.getElementById('txBadge');
+  const rxBadge = document.getElementById('rxBadge');
+  const swatchTx = document.getElementById('swatchTx');
+  const swatchRx = document.getElementById('swatchRx');
+  const statusNote = document.getElementById('statusNote');
+  const dialNeedle = document.getElementById('dialNeedle');
+  const rxDial = document.getElementById('rxDial');
+  const txDot = document.getElementById('txDot');
+  const rfWaves = document.querySelectorAll('#rfWaves path');
+  const phoneWave = document.getElementById('phoneWave');
+  const speakerWave = document.getElementById('speakerWave');
+  const txScope = document.getElementById('txScope');
+  const rxScope = document.getElementById('rxScope');
+  const soundWaves = document.querySelectorAll('#soundWaves path');
+  const root = document.documentElement;
+
+  const POINTS = 160;
+  const SCOPE_W = 960, SCOPE_H = 64, SCOPE_MID = 32, SCOPE_AMP = 24;
+  let txBuf = new Array(POINTS).fill(0);
+  let rxBuf = new Array(POINTS).fill(0);
+  let t = 0;
+  let prevNoise = 0;
+  let rfPhase = 0;
+
+  function freqToColor(f) {
+    const tt = (f - 88) / 20;
+    const hue = 8 + tt * 275;
+    return `hsl(${hue.toFixed(0)}, 78%, 58%)`;
+  }
+
+  function locked(tx, rx) { return Math.abs(tx - rx) < 0.15; }
+
+  function audioSample(time) {
+    return 0.55 * Math.sin(time * 1.3)
+         + 0.25 * Math.sin(time * 3.7 + 0.6)
+         + 0.15 * Math.sin(time * 0.55 + 1.1)
+         + 0.05 * Math.sin(time * 9.1);
+  }
+
+  function pointsToStr(buf, w, midY, amp) {
+    const step = w / (buf.length - 1);
+    let s = '';
+    for (let i = 0; i < buf.length; i++) {
+      s += (i * step).toFixed(1) + ',' + (midY - buf[i] * amp).toFixed(1) + ' ';
+    }
+    return s.trim();
+  }
+
+  function render() {
+    const tx = parseFloat(txSlider.value);
+    const rx = parseFloat(rxSlider.value);
+    const txLabel = tx.toFixed(1) + ' MHz';
+    const rxLabel = rx.toFixed(1) + ' MHz';
+    const colorTx = freqToColor(tx);
+    const colorRx = freqToColor(rx);
+    const isLocked = locked(tx, rx);
+
+    txReadout.textContent = tx.toFixed(1);
+    rxReadout.textContent = rx.toFixed(1);
+    txFreqLabel.textContent = txLabel;
+    rxFreqLabel.textContent = rxLabel;
+    txFreqTag.textContent = txLabel;
+    rxFreqTag.textContent = rxLabel;
+    txBadge.textContent = txLabel;
+    rxBadge.textContent = rxLabel;
+
+    root.style.setProperty('--tx', colorTx);
+    root.style.setProperty('--rx', colorRx);
+    txReadout.style.color = colorTx;
+    rxReadout.style.color = colorRx;
+    swatchTx.style.background = colorTx;
+    swatchRx.style.background = colorRx;
+    swatchTx.style.boxShadow = isLocked ? `0 0 8px ${colorTx}` : 'none';
+    swatchRx.style.boxShadow = isLocked ? `0 0 8px ${colorRx}` : 'none';
+
+    txFreqLabel.setAttribute('fill', colorTx);
+    rxFreqLabel.setAttribute('fill', colorRx);
+    txDot.setAttribute('stroke', colorTx);
+    rxDial.setAttribute('stroke', colorRx);
+    dialNeedle.setAttribute('stroke', colorRx);
+    phoneWave.setAttribute('stroke', colorTx);
+    rfWaves.forEach(p => p.setAttribute('stroke', colorTx));
+    txScope.setAttribute('stroke', colorTx);
+
+    if (isLocked) {
+      speakerWave.setAttribute('stroke', colorTx);
+      rxScope.setAttribute('stroke', colorTx);
+      soundWaves.forEach(p => p.setAttribute('stroke', colorTx));
+      statusNote.textContent = 'locked — receiver waveform is the transmitter waveform, speaker is audible';
+      statusNote.style.color = colorTx;
+    } else {
+      speakerWave.setAttribute('stroke', colorRx);
+      rxScope.setAttribute('stroke', colorRx);
+      soundWaves.forEach(p => p.setAttribute('opacity', 0));
+      statusNote.textContent = 'off-frequency — receiver is not reproducing the phone\\u2019s audio, speaker is silent';
+      statusNote.style.color = 'var(--ink-faint)';
+    }
+
+    const dialAngle = -60 + (rx - 88) / 20 * 120;
+    dialNeedle.setAttribute('transform', `rotate(${dialAngle} 638 152)`);
+  }
+
+  function animate() {
+    t += 0.24;
+    rfPhase += 0.14;
+    const tx = parseFloat(txSlider.value);
+    const rx = parseFloat(rxSlider.value);
+    const isLocked = locked(tx, rx);
+
+    // transmitter always carries the true audio signal
+    const newTx = audioSample(t);
+    txBuf.push(newTx); txBuf.shift();
+
+    // receiver only recovers it when tuned to the same frequency
+    let newRx;
+    if (isLocked) {
+      newRx = newTx;
+    } else {
+      prevNoise = prevNoise * 0.55 + (Math.random() * 2 - 1) * 0.45;
+      newRx = prevNoise * 0.35;
+    }
+    rxBuf.push(newRx); rxBuf.shift();
+
+    txScope.setAttribute('points', pointsToStr(txBuf, SCOPE_W, SCOPE_MID, SCOPE_AMP));
+    rxScope.setAttribute('points', pointsToStr(rxBuf, SCOPE_W, SCOPE_MID, SCOPE_AMP));
+
+    // small inline icons mirror the last few scope samples
+    const tail = 10;
+    const phoneTail = txBuf.slice(-tail);
+    const speakerTail = rxBuf.slice(-tail);
+    phoneWave.setAttribute('points', pointsToStr(phoneTail, 26, 0, 9).split(' ').map((p,i)=>{
+      const [x,y] = p.split(',').map(Number); return (18+x).toFixed(1) + ',' + (140+y).toFixed(1);
+    }).join(' '));
+    speakerWave.setAttribute('points', pointsToStr(speakerTail, 26, 0, 9).split(' ').map((p,i)=>{
+      const [x,y] = p.split(',').map(Number); return (808+x).toFixed(1) + ',' + (148+y).toFixed(1);
+    }).join(' '));
+
+    rfWaves.forEach((p, i) => {
+      const local = (rfPhase - i * 0.7) % 3;
+      const tt = Math.max(0, Math.min(1, local));
+      p.style.opacity = Math.sin(tt * Math.PI) * 0.9;
+    });
+
+    if (isLocked) {
+      soundWaves.forEach((p, i) => {
+        const local = (rfPhase - i * 0.6) % 3;
+        const tt = Math.max(0, Math.min(1, local));
+        p.setAttribute('opacity', Math.sin(tt * Math.PI) * 0.9);
+      });
+    }
+
+    requestAnimationFrame(animate);
+  }
+
+  function nudge(id, dir) {
+    const el = document.getElementById(id);
+    const next = Math.min(108, Math.max(88, Math.round((parseFloat(el.value) + dir * 0.1) * 10) / 10));
+    el.value = next.toFixed(1);
+    render();
+  }
+  document.querySelectorAll('.step-btn').forEach(btn => {
+    const id = btn.dataset.target, dir = parseInt(btn.dataset.dir, 10);
+    let holdTimer = null, repeat = null, held = false;
+    const stop = () => { clearTimeout(holdTimer); clearInterval(repeat); holdTimer = repeat = null; };
+    // single step: plain click (works for mouse, touch and keyboard)
+    btn.addEventListener('click', () => {
+      if (held) { held = false; return; }
+      nudge(id, dir);
+    });
+    // press-and-hold to repeat
+    btn.addEventListener('pointerdown', () => {
+      held = false;
+      stop();
+      holdTimer = setTimeout(() => {
+        held = true;
+        repeat = setInterval(() => nudge(id, dir), 70);
+      }, 400);
+    });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => btn.addEventListener(ev, stop));
+  });
+
+  txSlider.addEventListener('input', render);
+  rxSlider.addEventListener('input', render);
+  render();
+  animate();
+})();
+</script>
+</body>
+</html>
