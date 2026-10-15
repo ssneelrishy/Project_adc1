@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Image to Sound</title>
+<style>
+:root{--bg:#fff;--fg:#1a1a1a;--mut:#666;--card:#f3f3f6;--acc:#5b4bdb;--accfg:#fff;--bd:#d8d8e0;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15151a;--fg:#eee;--mut:#9a9aa6;--card:#22222b;--acc:#8b7dff;--accfg:#111;--bd:#3a3a46}}
+:root[data-theme="dark"]{--bg:#15151a;--fg:#eee;--mut:#9a9aa6;--card:#22222b;--acc:#8b7dff;--accfg:#111;--bd:#3a3a46}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.4}
+main{max-width:560px;margin:0 auto;padding:16px}
+h1{font-size:1.4rem;margin:8px 0 4px}
+p.s{color:var(--mut);margin:0 0 16px;font-size:.92rem}
+.card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:14px}
+label{display:block;font-size:.9rem;margin:10px 0 4px}
+label span{color:var(--mut)}
+input[type=range]{width:100%}
+button,.btn{display:block;width:100%;padding:14px;border:0;border-radius:12px;background:var(--acc);color:var(--accfg);font-size:1rem;font-weight:600;text-align:center;cursor:pointer;margin-top:10px}
+button.alt,.btn.alt{background:transparent;color:var(--fg);border:1px solid var(--bd)}
+button:disabled{opacity:.5}
+canvas{width:100%;border-radius:10px;background:#000;display:block}
+audio{width:100%;margin-top:10px}
+.row{display:flex;align-items:center;gap:10px;margin-top:10px}
+.row input{width:auto}
+#st{color:var(--mut);font-size:.88rem;margin-top:8px;min-height:1.2em}
+input[type=file]{display:none}
+</style>
+</head>
+<body>
+<main>
+<h1>Image → Sound</h1>
+<p class="s">Make audio whose spectrogram shows your picture. Turn the volume down: it sounds like harsh noise.</p>
+
+<div class="card">
+<label class="btn" for="f" style="margin-top:0">Choose image</label>
+<input type="file" id="f" accept="image/*">
+<canvas id="pv" width="300" height="150" style="margin-top:10px"></canvas>
+</div>
+
+<div class="card">
+<label>Duration: <span id="dv">6</span> s</label>
+<input type="range" id="dur" min="2" max="20" value="6">
+<label>Lowest pitch: <span id="lv">200</span> Hz</label>
+<input type="range" id="lo" min="50" max="4000" step="50" value="200">
+<label>Highest pitch: <span id="hv">14000</span> Hz</label>
+<input type="range" id="hi" min="4000" max="20000" step="500" value="14000">
+<label>Contrast: <span id="gv">1.0</span></label>
+<input type="range" id="ga" min="0.5" max="3" step="0.1" value="1">
+<div class="row"><input type="checkbox" id="inv"><label for="inv" style="margin:0">Invert (dark pixels loud)</label></div>
+<button id="go" disabled>Generate sound</button>
+<div id="st"></div>
+</div>
+
+<div class="card" id="out" hidden>
+<audio id="au" controls></audio>
+<a class="btn alt" id="dl" download="image-sound.wav">Download WAV</a>
+<p class="s" style="margin:12px 0 0">To see the image, open the WAV in a spectrogram app (e.g. Spectroid on Android, or Audacity on desktop) with a linear frequency scale.</p>
+</div>
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+const SR=44100,N=2048,HOP=512;
+let img=null;
+
+[["dur","dv"],["lo","lv"],["hi","hv"],["ga","gv"]].forEach(([a,b])=>{
+  $(a).oninput=()=>{$(b).textContent=$(a).value};
+});
+
+$("f").onchange=e=>{
+  const file=e.target.files[0]; if(!file) return;
+  const im=new Image();
+  im.onload=()=>{
+    img=im;
+    const c=$("pv"),x=c.getContext("2d");
+    c.height=Math.round(300*im.height/im.width);
+    x.drawImage(im,0,0,c.width,c.height);
+    $("go").disabled=false; $("st").textContent="";
+  };
+  im.src=URL.createObjectURL(file);
+};
+
+// In-place radix-2 FFT (forward)
+function fft(re,im){
+  const n=re.length;
+  for(let i=1,j=0;i<n;i++){
+    let b=n>>1; for(;j&b;b>>=1) j^=b; j^=b;
+    if(i<j){let t=re[i];re[i]=re[j];re[j]=t;t=im[i];im[i]=im[j];im[j]=t;}
+  }
+  for(let len=2;len<=n;len<<=1){
+    const a=-2*Math.PI/len,wr=Math.cos(a),wi=Math.sin(a);
+    for(let i=0;i<n;i+=len){
+      let cr=1,ci=0;
+      for(let k=0;k<len/2;k++){
+        const u=i+k,v=u+len/2;
+        const xr=re[v]*cr-im[v]*ci,xi=re[v]*ci+im[v]*cr;
+        re[v]=re[u]-xr;im[v]=im[u]-xi;re[u]+=xr;im[u]+=xi;
+        const t=cr*wr-ci*wi;ci=cr*wi+ci*wr;cr=t;
+      }
+    }
+  }
+}
+
+function synth(){
+  const dur=+$("dur").value,f0=+$("lo").value,f1=Math.max(+$("hi").value,f0+500);
+  const g=+$("ga").value,inv=$("inv").checked;
+  const frames=Math.floor(dur*SR/HOP);
+  const lo=Math.floor(f0*N/SR),hi=Math.min(Math.floor(f1*N/SR),N/2-1),bins=hi-lo;
+
+  const c=document.createElement("canvas");c.width=frames;c.height=bins;
+  const cx=c.getContext("2d");cx.fillStyle="#000";cx.fillRect(0,0,frames,bins);
+  const s=Math.min(frames/img.width,bins/img.height);
+  const w=img.width*s,h=img.height*s;
+  cx.drawImage(img,(frames-w)/2,(bins-h)/2,w,h);
+  const d=cx.getImageData(0,0,frames,bins).data;
+
+  const out=new Float32Array(frames*HOP+N);
+  const win=new Float32Array(N);
+  for(let i=0;i<N;i++) win[i]=0.5-0.5*Math.cos(2*Math.PI*i/N);
+  const phase=new Float32Array(N/2+1);
+  for(let k=0;k<phase.length;k++) phase[k]=Math.random()*2*Math.PI;
+  const re=new Float32Array(N),im=new Float32Array(N);
+
+  for(let t=0;t<frames;t++){
+    re.fill(0);im.fill(0);
+    for(let k=lo;k<hi;k++){
+      const row=hi-1-k;              // top of image = high frequency
+      const p=(row*frames+t)*4;
+      let m=(d[p]*0.299+d[p+1]*0.587+d[p+2]*0.114)/255;
+      if(inv) m=1-m;
+      m=Math.pow(m,g);
+      phase[k]+=2*Math.PI*k*HOP/N;   // advance at the bin's own frequency
+      const a=m*Math.cos(phase[k]),b=-m*Math.sin(phase[k]);
+      re[k]=a;im[k]=b;re[N-k]=a;im[N-k]=-b;
+    }
+    // inverse FFT via conjugation trick (spectrum is conjugate-symmetric, so result is real)
+    fft(re,im);
+    const o=t*HOP;
+    for(let i=0;i<N;i++) out[o+i]+=re[i]*win[i];
+  }
+  let mx=1e-9;for(let i=0;i<out.length;i++) mx=Math.max(mx,Math.abs(out[i]));
+  for(let i=0;i<out.length;i++) out[i]=out[i]/mx*0.9;
+  return out;
+}
+
+function wav(f){
+  const b=new ArrayBuffer(44+f.length*2),v=new DataView(b);
+  const S=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i))};
+  S(0,"RIFF");v.setUint32(4,36+f.length*2,true);S(8,"WAVEfmt ");
+  v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
+  v.setUint32(24,SR,true);v.setUint32(28,SR*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);
+  S(36,"data");v.setUint32(40,f.length*2,true);
+  for(let i=0;i<f.length;i++) v.setInt16(44+i*2,Math.max(-1,Math.min(1,f[i]))*32767,true);
+  return new Blob([b],{type:"audio/wav"});
+}
+
+$("go").onclick=()=>{
+  if(!img) return;
+  $("go").disabled=true;$("st").textContent="Generating…";
+  setTimeout(()=>{
+    try{
+      const url=URL.createObjectURL(wav(synth()));
+      $("au").src=url;$("dl").href=url;$("out").hidden=false;
+      $("st").textContent="Done. Press play or download.";
+    }catch(e){$("st").textContent="Something went wrong: "+e.message}
+    $("go").disabled=false;
+  },30);
+};
+</script>
+</body>
+</html>
